@@ -5,7 +5,7 @@ using Unity.Collections;
 using Unity.Entities;
 using Unity.Transforms;
 
-namespace LeaderBored;
+namespace Killfeed;
 
 [HarmonyPatch(typeof(VampireDownedServerEventSystem), nameof(VampireDownedServerEventSystem.OnUpdate))]
 public static class VampireDownedHook
@@ -55,16 +55,6 @@ public static class VampireDownedHook
             Plugin.Logger.LogWarning($"Let deca know there is another killer abouts and it's not a player or a unit.");
             return;
         }
-        else
-        {
-            Plugin.Logger.LogMessage($"{victim.Name} has a player killer");
-			
-			foreach(var comp in VWorld.Server.EntityManager.GetComponentTypes(killerEntity))
-            {
-				Plugin.Logger.LogMessage($"\t{comp}");
-			}
-        }
-
 		
 		var killer = killerEntity.Read<PlayerCharacter>();
 

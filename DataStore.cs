@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -9,16 +9,19 @@ using ProjectM;
 using ProjectM.Network;
 using Unity.Collections;
 using Unity.Mathematics;
+using UnityEngine.Jobs;
 using Random = System.Random;
 
-namespace LeaderBored;
+namespace Killfeed;
 public class DataStore
 {
-	public record struct PlayerStatistics(ulong SteamId, string LastName, uint Kills, int Deaths, int CurrentStreak,
-		int HighestStreak)
+	public record struct PlayerStatistics(ulong SteamId, string LastName, int Kills, int Deaths, int CurrentStreak,
+		int HighestStreak, string LastClanName)
 	{
 		// lol yikes
-		public string ToCsv() => $"{SteamId},{(LastName?.Contains(',') ?? true ? "invalid" : LastName)},{Kills},{Deaths},{CurrentStreak},{HighestStreak}";
+		private static string SafeCSVName(string s) => s.Replace(",", "");
+
+		public string ToCsv() => $"{SteamId},{SafeCSVName(LastName)},{Kills},{Deaths},{CurrentStreak},{HighestStreak},{SafeCSVName(LastClanName)}";
 
 		public static PlayerStatistics Parse(string csv)
 		{
@@ -28,10 +31,11 @@ public class DataStore
 			{
 				SteamId = ulong.Parse(split[0]),
 				LastName = split[1],
-				Kills = uint.Parse(split[2]),
+				Kills = int.Parse(split[2]),
 				Deaths = int.Parse(split[3]),
 				CurrentStreak = int.Parse(split[4]),
-				HighestStreak = int.Parse(split[5])
+				HighestStreak = int.Parse(split[5]),
+				LastClanName = split.Length > 6 ? split[6] : ""
 			};
 		}
 	}
@@ -74,10 +78,10 @@ public class DataStore
 	}
 
 	private const string EVENTS_FILE_NAME = "events.v1.csv";
-	private const string EVENTS_FILE_PATH = $"BepInEx/config/Leaderbored/{EVENTS_FILE_NAME}";
+	private const string EVENTS_FILE_PATH = $"BepInEx/config/Killfeed/{EVENTS_FILE_NAME}";
 
 	private const string STATS_FILE_NAME = "stats.v1.csv";
-	private const string STATS_FILE_PATH = $"BepInEx/config/Leaderbored/{STATS_FILE_NAME}";
+	private const string STATS_FILE_PATH = $"BepInEx/config/Killfeed/{STATS_FILE_NAME}";
 
 	public static void WriteToDisk()
 	{
@@ -102,36 +106,36 @@ public class DataStore
 	}
 
 	public static void LoadFromDisk()
-    {
-        // can't think of how they would not be newed but let's be sure we don't duplicate data
-        Events.Clear();
-        PlayerDatas.Clear();
+	{
+		// can't think of how they would not be newed but let's be sure we don't duplicate data
+		Events.Clear();
+		PlayerDatas.Clear();
 
-        // let's assume maybe it can be empty or not exist and we don't care
+		// let's assume maybe it can be empty or not exist and we don't care
 		LoadEventData();
 		LoadPlayerData();
-    }
+	}
 
 	private static void LoadEventData()
 	{
 		if (!File.Exists(EVENTS_FILE_PATH))
-        {
-            return;
-        }
-        using StreamReader eventsFile = new StreamReader(EVENTS_FILE_PATH);
-        while (!eventsFile.EndOfStream)
-        {
-            var line = eventsFile.ReadLine();
-            if (string.IsNullOrWhiteSpace(line)) continue;
-            try
-            {
-                Events.Add(EventData.Parse(line));
-            }
-            catch (Exception)
-            {
-                Plugin.Logger.LogError($"Failed to parse event line: \"{line}\"");
-            }
-        }
+		{
+			return;
+		}
+		using StreamReader eventsFile = new StreamReader(EVENTS_FILE_PATH);
+		while (!eventsFile.EndOfStream)
+		{
+			var line = eventsFile.ReadLine();
+			if (string.IsNullOrWhiteSpace(line)) continue;
+			try
+			{
+				Events.Add(EventData.Parse(line));
+			}
+			catch (Exception)
+			{
+				Plugin.Logger.LogError($"Failed to parse event line: \"{line}\"");
+			}
+		}
 	}
 
 	private static void LoadPlayerData()
@@ -145,9 +149,9 @@ public class DataStore
 			try
 			{
 				var playerData = PlayerStatistics.Parse(line);
-				if(PlayerDatas.ContainsKey(playerData.SteamId))
+				if (PlayerDatas.TryGetValue(playerData.SteamId, out PlayerStatistics data))
 				{
-					Plugin.Logger.LogWarning($"Duplicate player data found, overwriting {PlayerDatas[playerData.SteamId]} with {playerData}");
+					Plugin.Logger.LogWarning($"Duplicate player data found, overwriting {data} with {playerData}");
 				}
 				PlayerDatas[playerData.SteamId] = playerData;
 			}
@@ -158,7 +162,7 @@ public class DataStore
 		}
 	}
 
-    public static void RegisterKillEvent(PlayerCharacter victim, PlayerCharacter killer, float3 location)
+	public static void RegisterKillEvent(PlayerCharacter victim, PlayerCharacter killer, float3 location)
 	{
 		var victimUser = victim.UserEntity.Read<User>();
 		var killerUser = killer.UserEntity.Read<User>();
@@ -168,57 +172,76 @@ public class DataStore
 		Events.Add(newEvent);
 
 
-		var UpsertName = (ulong steamId, string name) =>
+		PlayerStatistics UpsertName(ulong steamId, string name, string clanName)
 		{
 			if (PlayerDatas.TryGetValue(steamId, out var player))
 			{
 				player.LastName = name;
+				player.LastClanName = clanName;
 				PlayerDatas[steamId] = player;
 			}
 			else
 			{
-				PlayerDatas[steamId] = new PlayerStatistics() { LastName = name, SteamId = steamId };
+				PlayerDatas[steamId] = new PlayerStatistics() { LastName = name, SteamId = steamId, LastClanName = clanName };
 			}
-		};
 
-		UpsertName(victimUser.PlatformId, victimUser.CharacterName.ToString());
-		UpsertName(killerUser.PlatformId, killerUser.CharacterName.ToString());
+			return PlayerDatas[steamId];
+		}
+
+
+		var victimData = UpsertName(victimUser.PlatformId, victimUser.CharacterName.ToString(), victim.SmartClanName.ToString());
+		var killerData = UpsertName(killerUser.PlatformId, killerUser.CharacterName.ToString(), killer.SmartClanName.ToString());
 
 		RecordKill(killerUser.PlatformId);
 		var lostStreak = RecordDeath(victimUser.PlatformId);
 
-		AnnounceKill(victimUser, killerUser, lostStreak);
+		AnnounceKill(victimData, killerData, lostStreak);
 
 		// TODO: Very bad, but going to save to disk each kill for nice hiccup of lag
 		// while this is naieve and whole file, in append or WAL this might be better
 		WriteToDisk();
 	}
-
-	private static void AnnounceKill(User victimUser, User killerUser, bool lostStreak)
+	
+	private static void AnnounceKill(PlayerStatistics victimUser, PlayerStatistics killerUser, int lostStreakAmount)
 	{
 		if (!Settings.AnnounceKills) return;
-		
-		var victimName = Markup.Highlight(PlayerDatas[victimUser.PlatformId].LastName);
-		var killerName = Markup.Highlight(PlayerDatas[killerUser.PlatformId].LastName);
 
-		var message = lostStreak
-			? $"{killerName} ended {victimName}'s kill streak!"
+		var victimName = Markup.Highlight(victimUser.LastName);
+		var killerName = Markup.Highlight(killerUser.LastName);
+
+		var message = lostStreakAmount > Settings.AnnounceKillstreakLostMinimum
+			? $"{killerName} ended {victimName}'s {Markup.Secondary(lostStreakAmount)} kill streak!"
 			: $"{killerName} killed {victimName}!";
 
+		var killMsg = killerUser.CurrentStreak switch
+		{
+			5 => $"<size=18>{killerName} is on a killing spree!",
+			10 => $"<size=19>{killerName} is on a rampage!",
+			15 => $"<size=20>{killerName} is dominating!",
+			20 => $"<size=21>{killerName} is unstoppable!",
+			25 => $"<size=22>{killerName} is godlike!",
+			30 => $"<size=24>{killerName} is WICKED SICK!",
+			_ => null
+		};
+
 		ServerChatUtils.SendSystemMessageToAllClients(VWorld.Server.EntityManager, Markup.Prefix + message);
+		
+		if (!string.IsNullOrEmpty(killMsg) && Settings.AnnounceKillstreak)
+		{
+			ServerChatUtils.SendSystemMessageToAllClients(VWorld.Server.EntityManager, Markup.Prefix + killMsg);
+		}
 	}
 
-	private static bool RecordDeath(ulong platformId)
+	private static int RecordDeath(ulong platformId)
 	{
-		var lostStreak = false;
+		var lostStreak = 0;
 		if (PlayerDatas.TryGetValue(platformId, out var player))
 		{
 			player.Deaths++;
-			if (player.CurrentStreak > 0)
-			{
-				player.CurrentStreak = 0;
-				lostStreak = true;
-			}
+
+			lostStreak = player.CurrentStreak;
+			player.CurrentStreak = 0;
+
 			PlayerDatas[platformId] = player;
 		}
 		else
