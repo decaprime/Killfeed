@@ -12,7 +12,7 @@ public static class VampireDownedHook
 {
     public static void Prefix(VampireDownedServerEventSystem __instance)
     {
-        var downedEvents = __instance.__OnUpdate_LambdaJob0_entityQuery.ToEntityArray(Allocator.Temp);
+        var downedEvents = __instance.__query_1174204813_0.ToEntityArray(Allocator.Temp);
         foreach (var entity in downedEvents)
         {
             ProcessVampireDowned(entity);
