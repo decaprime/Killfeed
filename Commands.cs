@@ -19,8 +19,8 @@ public class Commands
 
 		offset = offset > topKillers.Length ? topKillers.Length : offset;
 		num = num > topKillers.Length ? topKillers.Length : num;
-		
-		
+
+
 
 		var pad = (string name) => new string('\t'.Repeat(6 - name.Length / 5).ToArray());
 

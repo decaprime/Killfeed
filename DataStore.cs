@@ -201,7 +201,7 @@ public class DataStore
 		// while this is naieve and whole file, in append or WAL this might be better
 		WriteToDisk();
 	}
-	
+
 	private static void AnnounceKill(PlayerStatistics victimUser, PlayerStatistics killerUser, int lostStreakAmount)
 	{
 		if (!Settings.AnnounceKills) return;
@@ -225,7 +225,7 @@ public class DataStore
 		};
 
 		ServerChatUtils.SendSystemMessageToAllClients(VWorld.Server.EntityManager, Markup.Prefix + message);
-		
+
 		if (!string.IsNullOrEmpty(killMsg) && Settings.AnnounceKillstreak)
 		{
 			ServerChatUtils.SendSystemMessageToAllClients(VWorld.Server.EntityManager, Markup.Prefix + killMsg);
