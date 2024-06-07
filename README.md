@@ -16,6 +16,8 @@
 ## https://vrisingmods.com/discord
 
 # Changelog
+- 0.2.1
+	- Fixed confusing plugin ID, **important:** the config file was `com.deca.Bloodstone.cfg` it will now use `gg.deca.Killfeed.cfg`
 - 0.2.0
 	- Update for 1.0
 - 0.1.0
