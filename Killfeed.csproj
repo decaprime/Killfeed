@@ -8,7 +8,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
     <RootNamespace>Killfeed</RootNamespace>
-    <BepInExPluginGuid>com.deca.Bloodstone</BepInExPluginGuid>
+    <BepInExPluginGuid>gg.deca.Killfeed</BepInExPluginGuid>
   </PropertyGroup>
   <!-- Copy Killfeed.dll to /dist -->
 	<Target Name="Thunderstore Copy to Dist" AfterTargets="AfterBuild" Condition=" '$(Configuration)' == 'Release'">
