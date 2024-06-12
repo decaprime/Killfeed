@@ -26,6 +26,18 @@ internal static class ECSExtensions
 		return VWorld.Game.EntityManager.HasComponentRaw(entity, typeIndex);
 	}
 
+	internal static bool Has<T>(this Entity entity, out T value) where T : struct
+	{
+		if (entity.Has<T>())
+		{
+			value = entity.Read<T>();
+			return true;
+		}
+
+		value = default;
+		return false;
+	}
+
 	internal unsafe static T RW<T>(this Entity entity) where T : struct
 	{
 		int typeIndex = TypeManager.GetTypeIndex(Il2CppType.Of<T>());

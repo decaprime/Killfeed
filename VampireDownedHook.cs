@@ -66,6 +66,9 @@ public static class VampireDownedHook
 
 		var location = victimEntity.Read<LocalToWorld>();
 
-		DataStore.RegisterKillEvent(victim, killer, location.Position);
+		int victimLevel = victimEntity.Has<Equipment>(out var victimEquipment) ? (int)victimEquipment.GetFullLevel() : -1;
+		int killerLevel = killerEntity.Has<Equipment>(out var killerEquipment) ? (int)killerEquipment.GetFullLevel() : -1;
+
+		DataStore.RegisterKillEvent(victim, killer, location.Position, victimLevel, killerLevel);
 	}
 }

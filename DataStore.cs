@@ -16,12 +16,12 @@ namespace Killfeed;
 public class DataStore
 {
 	public record struct PlayerStatistics(ulong SteamId, string LastName, int Kills, int Deaths, int CurrentStreak,
-		int HighestStreak, string LastClanName)
+		int HighestStreak, string LastClanName, int CurrentLevel, int MaxLevel)
 	{
 		// lol yikes
 		private static string SafeCSVName(string s) => s.Replace(",", "");
 
-		public string ToCsv() => $"{SteamId},{SafeCSVName(LastName)},{Kills},{Deaths},{CurrentStreak},{HighestStreak},{SafeCSVName(LastClanName)}";
+		public string ToCsv() => $"{SteamId},{SafeCSVName(LastName)},{Kills},{Deaths},{CurrentStreak},{HighestStreak},{SafeCSVName(LastClanName)},{CurrentLevel},{MaxLevel}";
 
 		public static PlayerStatistics Parse(string csv)
 		{
@@ -35,14 +35,32 @@ public class DataStore
 				Deaths = int.Parse(split[3]),
 				CurrentStreak = int.Parse(split[4]),
 				HighestStreak = int.Parse(split[5]),
-				LastClanName = split.Length > 6 ? split[6] : ""
+				LastClanName = split.Length > 6 ? split[6] : "",
+				CurrentLevel = split.Length > 7 ? int.Parse(split[7]) : -1,
+				MaxLevel = split.Length > 8 ? int.Parse(split[8]) : -1
 			};
+		}
+
+		public string FormattedName
+		{
+			get
+			{
+				var name = Markup.Highlight(LastName);
+				if (Settings.IncludeLevel)
+				{
+					return Settings.UseMaxLevel ? $"{name} ({Markup.Secondary(MaxLevel)}*)" : $"{name} ({Markup.Secondary(CurrentLevel)})";
+				}
+				else
+				{
+					return $"{name}";
+				}
+			}
 		}
 	}
 
-	public record struct EventData(ulong VictimId, ulong KillerId, float3 Location, long Timestamp)
+	public record struct EventData(ulong VictimId, ulong KillerId, float3 Location, long Timestamp, int VictimLevel, int KillerLevel)
 	{
-		public string ToCsv() => $"{VictimId},{KillerId},{Location.x},{Location.y},{Location.z},{Timestamp}";
+		public string ToCsv() => $"{VictimId},{KillerId},{Location.x},{Location.y},{Location.z},{Timestamp},{VictimLevel},{KillerLevel}";
 
 		public static EventData Parse(string csv)
 		{
@@ -52,7 +70,9 @@ public class DataStore
 				VictimId = ulong.Parse(split[0]),
 				KillerId = ulong.Parse(split[1]),
 				Location = new float3(float.Parse(split[2]), float.Parse(split[3]), float.Parse(split[4])),
-				Timestamp = long.Parse(split[5])
+				Timestamp = long.Parse(split[5]),
+				VictimLevel = split.Length > 6 ? int.Parse(split[6]) : 0,
+				KillerLevel = split.Length > 7 ? int.Parse(split[7]) : 0,
 			};
 		}
 	}
@@ -162,35 +182,38 @@ public class DataStore
 		}
 	}
 
-	public static void RegisterKillEvent(PlayerCharacter victim, PlayerCharacter killer, float3 location)
+	public static void RegisterKillEvent(PlayerCharacter victim, PlayerCharacter killer, float3 location, int victimLevel, int killerLevel)
 	{
 		var victimUser = victim.UserEntity.Read<User>();
 		var killerUser = killer.UserEntity.Read<User>();
 
-		var newEvent = new EventData(victimUser.PlatformId, killerUser.PlatformId, location, DateTime.UtcNow.Ticks);
+		Plugin.Logger.LogWarning($"{victimLevel} {killerLevel}");
+
+		var newEvent = new EventData(victimUser.PlatformId, killerUser.PlatformId, location, DateTime.UtcNow.Ticks, victimLevel, killerLevel);
 
 		Events.Add(newEvent);
 
 
-		PlayerStatistics UpsertName(ulong steamId, string name, string clanName)
+		PlayerStatistics UpsertName(ulong steamId, string name, string clanName, int level)
 		{
 			if (PlayerDatas.TryGetValue(steamId, out var player))
 			{
 				player.LastName = name;
 				player.LastClanName = clanName;
+				player.CurrentLevel = level;
+				player.MaxLevel = Math.Max(player.MaxLevel, level);
 				PlayerDatas[steamId] = player;
 			}
 			else
 			{
-				PlayerDatas[steamId] = new PlayerStatistics() { LastName = name, SteamId = steamId, LastClanName = clanName };
+				PlayerDatas[steamId] = new PlayerStatistics() { LastName = name, SteamId = steamId, LastClanName = clanName, CurrentLevel = level, MaxLevel = level };
 			}
 
 			return PlayerDatas[steamId];
 		}
 
-
-		var victimData = UpsertName(victimUser.PlatformId, victimUser.CharacterName.ToString(), victim.SmartClanName.ToString());
-		var killerData = UpsertName(killerUser.PlatformId, killerUser.CharacterName.ToString(), killer.SmartClanName.ToString());
+		var victimData = UpsertName(victimUser.PlatformId, victimUser.CharacterName.ToString(), victim.SmartClanName.ToString(), victimLevel);
+		var killerData = UpsertName(killerUser.PlatformId, killerUser.CharacterName.ToString(), killer.SmartClanName.ToString(), killerLevel);
 
 		RecordKill(killerUser.PlatformId);
 		var lostStreak = RecordDeath(victimUser.PlatformId);
@@ -206,8 +229,8 @@ public class DataStore
 	{
 		if (!Settings.AnnounceKills) return;
 
-		var victimName = Markup.Highlight(victimUser.LastName);
-		var killerName = Markup.Highlight(killerUser.LastName);
+		var victimName = victimUser.FormattedName;
+		var killerName = killerUser.FormattedName;
 
 		var message = lostStreakAmount > Settings.AnnounceKillstreakLostMinimum
 			? $"{killerName} ended {victimName}'s {Markup.Secondary(lostStreakAmount)} kill streak!"
