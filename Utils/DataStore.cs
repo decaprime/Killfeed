@@ -215,26 +215,55 @@ public class DataStore
 		var victimData = UpsertName(victimUser.PlatformId, victimUser.CharacterName.ToString(), victim.SmartClanName.ToString(), victimLevel);
 		var killerData = UpsertName(killerUser.PlatformId, killerUser.CharacterName.ToString(), killer.SmartClanName.ToString(), killerLevel);
 
-		RecordKill(killerUser.PlatformId);
-		var lostStreak = RecordDeath(victimUser.PlatformId);
+		// Utiliser les niveaux les plus élevés enregistrés ou les niveaux actuels s'ils ne sont pas enregistrés
+        int victimEffectiveLevel = victimData.MaxLevel > 0 ? victimData.MaxLevel : victimLevel;
+        int killerEffectiveLevel = killerData.MaxLevel > 0 ? killerData.MaxLevel : killerLevel;
 
-		AnnounceKill(victimData, killerData, lostStreak);
+        int levelDifference = killerEffectiveLevel - victimEffectiveLevel;
+        if (levelDifference < 20)
+        {
+            RecordKill(killerUser.PlatformId);
+            var lostStreak = RecordDeath(victimUser.PlatformId);
+            AnnounceKill(victimData, killerData, lostStreak);
+        }
+        else
+        {
+            AnnounceKill(victimData, killerData, 0);
+        }
 
-		// TODO: Very bad, but going to save to disk each kill for nice hiccup of lag
-		// while this is naieve and whole file, in append or WAL this might be better
-		WriteToDisk();
+        WriteToDisk();
 	}
 
 	private static void AnnounceKill(PlayerStatistics victimUser, PlayerStatistics killerUser, int lostStreakAmount)
 	{
 		if (!Settings.AnnounceKills) return;
 
-		var victimName = victimUser.FormattedName;
-		var killerName = killerUser.FormattedName;
+		string victimClan = victimUser.LastClanName != "No clan found" ? victimUser.LastClanName : "";
+		string killerClan = killerUser.LastClanName != "No clan found" ? killerUser.LastClanName : "";
+
+		string victimLevelColor = "green";
+		string killerLevelColor = "green";
+
+		int levelDifference = killerUser.MaxLevel - victimUser.MaxLevel;
+		if (levelDifference >= 10 && levelDifference < 20)
+		{
+			victimLevelColor = "yellow";
+			killerLevelColor = "yellow";
+		}
+		else if (levelDifference >= 20)
+		{
+			victimLevelColor = "red";
+			killerLevelColor = "red";
+		}
+
+		var victimName = AnsiColor.ColorText(victimClan, "reset") + AnsiColor.ColorText(victimUser.LastName, "white") + $"[" + AnsiColor.ColorText($"{victimUser.MaxLevel}", victimLevelColor) + "]";
+		var killerName = AnsiColor.ColorText(killerClan, "reset") + AnsiColor.ColorText(killerUser.LastName, "white") + $"[" + AnsiColor.ColorText($"{killerUser.MaxLevel}", killerLevelColor) + "]";
+
+		string killedText = AnsiColor.ColorText("killed", killerLevelColor);
 
 		var message = lostStreakAmount > Settings.AnnounceKillstreakLostMinimum
 			? $"{killerName} ended {victimName}'s {Markup.Secondary(lostStreakAmount)} kill streak!"
-			: $"{killerName} killed {victimName}!";
+			: $"{killerName} {killedText} {victimName}!";
 
 		var killMsg = killerUser.CurrentStreak switch
 		{
