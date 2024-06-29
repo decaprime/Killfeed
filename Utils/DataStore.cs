@@ -12,7 +12,7 @@ using Unity.Mathematics;
 using UnityEngine.Jobs;
 using Random = System.Random;
 
-namespace Killfeed;
+namespace Killfeed.Utils;
 public class DataStore
 {
 	public record struct PlayerStatistics(ulong SteamId, string LastName, int Kills, int Deaths, int CurrentStreak,

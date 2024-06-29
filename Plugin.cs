@@ -3,6 +3,7 @@ using BepInEx;
 using BepInEx.Logging;
 using BepInEx.Unity.IL2CPP;
 using HarmonyLib;
+using Killfeed.Utils;
 using Steamworks;
 using VampireCommandFramework;
 
@@ -16,6 +17,7 @@ public partial class Plugin : BasePlugin
 {
 	Harmony _harmony;
 	public static ManualLogSource Logger;
+	public const int MAX_REPLY_LENGTH = 509;
 	public override void Load()
 	{
 		Logger = Log;
