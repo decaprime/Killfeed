@@ -228,12 +228,12 @@ public class DataStore
 			RecordKill(killerUser.PlatformId);
 			var lostStreak = RecordDeath(victimUser.PlatformId);
 			AnnounceKill(victimData, killerData, lostStreak);
-			UpdateTopKillersBuff();
+			// UpdateTopKillersBuff();
 		}
 		else
 		{
 			// Apply debuff for significant level difference
-			ApplyDebuffForUnfairKill(killer.UserEntity, killerEntity);
+			// ApplyDebuffForUnfairKill(killer.UserEntity, killerEntity);
 			AnnounceKill(victimData, killerData, 0);
 		}
 
@@ -330,10 +330,8 @@ public class DataStore
 
 	private static void ApplyDebuffForUnfairKill(Entity killerUser, Entity killerEntity)
 	{
-		// Define your debuff prefab GUID
-		var debuffPrefab = new PrefabGUID(1163490655); // Replace with your debuff GUID
-													   // Apply the debuff
-		Buffs.AddBuff(killerUser, killerEntity, debuffPrefab, 30); // Adjust duration as needed
+		var debuffPrefab = new PrefabGUID(1163490655); 
+		Buffs.AddBuff(killerUser, killerEntity, debuffPrefab, 30);
 	}
 
 	private static int RecordDeath(ulong platformId)
