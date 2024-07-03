@@ -15,6 +15,6 @@ internal static class Markup
 
 	public const string SecondaryColor = "#dda";
 
-	public static string Prefix = $"[kf] ".Color("#ed1").Bold();
+	public static string Prefix = $"[PvP] ".Color("#ed1").Bold();
 
 }

@@ -2,30 +2,31 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using Backtrace.Unity.Common;
 using Bloodstone.API;
 using Il2CppSystem.Linq;
 using ProjectM;
 using ProjectM.Network;
+using Stunlock.Core;
 using Unity.Collections;
+using Unity.Entities;
 using Unity.Mathematics;
 using UnityEngine.Jobs;
 using Random = System.Random;
 
-namespace Killfeed;
+namespace Killfeed.Utils;
 public class DataStore
 {
 	public record struct PlayerStatistics(ulong SteamId, string LastName, int Kills, int Deaths, int CurrentStreak,
-		int HighestStreak, string LastClanName, int CurrentLevel, int MaxLevel)
+	int HighestStreak, string LastClanName, int CurrentLevel, int MaxLevel, Entity UserEntity, Entity CharEntity)
 	{
-		// lol yikes
 		private static string SafeCSVName(string s) => s.Replace(",", "");
 
 		public string ToCsv() => $"{SteamId},{SafeCSVName(LastName)},{Kills},{Deaths},{CurrentStreak},{HighestStreak},{SafeCSVName(LastClanName)},{CurrentLevel},{MaxLevel}";
 
 		public static PlayerStatistics Parse(string csv)
 		{
-			// intentionally naieve and going to blow up so I'll catch it and not get an object for that player and log it
 			var split = csv.Split(',');
 			return new PlayerStatistics()
 			{
@@ -37,7 +38,9 @@ public class DataStore
 				HighestStreak = int.Parse(split[5]),
 				LastClanName = split.Length > 6 ? split[6] : "",
 				CurrentLevel = split.Length > 7 ? int.Parse(split[7]) : -1,
-				MaxLevel = split.Length > 8 ? int.Parse(split[8]) : -1
+				MaxLevel = split.Length > 8 ? int.Parse(split[8]) : -1,
+				UserEntity = Entity.Null, // Default value, update this in your logic where necessary
+				CharEntity = Entity.Null // Default value, update this in your logic where necessary
 			};
 		}
 
@@ -182,7 +185,7 @@ public class DataStore
 		}
 	}
 
-	public static void RegisterKillEvent(PlayerCharacter victim, PlayerCharacter killer, float3 location, int victimLevel, int killerLevel)
+	public static void RegisterKillEvent(PlayerCharacter victim, Entity victimEntity, PlayerCharacter killer, Entity killerEntity, float3 location, int victimLevel, int killerLevel)
 	{
 		var victimUser = victim.UserEntity.Read<User>();
 		var killerUser = killer.UserEntity.Read<User>();
@@ -193,8 +196,7 @@ public class DataStore
 
 		Events.Add(newEvent);
 
-
-		PlayerStatistics UpsertName(ulong steamId, string name, string clanName, int level)
+		PlayerStatistics UpsertName(ulong steamId, string name, string clanName, int level, Entity userEntity, Entity charEntity)
 		{
 			if (PlayerDatas.TryGetValue(steamId, out var player))
 			{
@@ -202,26 +204,39 @@ public class DataStore
 				player.LastClanName = clanName;
 				player.CurrentLevel = level;
 				player.MaxLevel = Math.Max(player.MaxLevel, level);
+				player.UserEntity = userEntity;
+				player.CharEntity = charEntity;
 				PlayerDatas[steamId] = player;
 			}
 			else
 			{
-				PlayerDatas[steamId] = new PlayerStatistics() { LastName = name, SteamId = steamId, LastClanName = clanName, CurrentLevel = level, MaxLevel = level };
+				PlayerDatas[steamId] = new PlayerStatistics(steamId, name, 0, 0, 0, 0, clanName, level, level, userEntity, charEntity);
 			}
 
 			return PlayerDatas[steamId];
 		}
 
-		var victimData = UpsertName(victimUser.PlatformId, victimUser.CharacterName.ToString(), victim.SmartClanName.ToString(), victimLevel);
-		var killerData = UpsertName(killerUser.PlatformId, killerUser.CharacterName.ToString(), killer.SmartClanName.ToString(), killerLevel);
+		var victimData = UpsertName(victimUser.PlatformId, victimUser.CharacterName.ToString(), victim.SmartClanName.ToString(), victimLevel, victim.UserEntity, victimEntity);
+		var killerData = UpsertName(killerUser.PlatformId, killerUser.CharacterName.ToString(), killer.SmartClanName.ToString(), killerLevel, killer.UserEntity, killerEntity);
 
-		RecordKill(killerUser.PlatformId);
-		var lostStreak = RecordDeath(victimUser.PlatformId);
+		int victimEffectiveLevel = victimData.MaxLevel > 0 ? victimData.MaxLevel : victimLevel;
+		int killerEffectiveLevel = killerData.MaxLevel > 0 ? killerData.MaxLevel : killerLevel;
 
-		AnnounceKill(victimData, killerData, lostStreak);
+		int levelDifference = killerEffectiveLevel - victimEffectiveLevel;
+		if (levelDifference < Settings.LevelDifferenceThreshold)
+		{
+			RecordKill(killerUser.PlatformId);
+			var lostStreak = RecordDeath(victimUser.PlatformId);
+			AnnounceKill(victimData, killerData, lostStreak);
+			// UpdateTopKillersBuff();
+		}
+		else
+		{
+			// Apply debuff for significant level difference
+			// ApplyDebuffForUnfairKill(killer.UserEntity, killerEntity);
+			AnnounceKill(victimData, killerData, 0);
+		}
 
-		// TODO: Very bad, but going to save to disk each kill for nice hiccup of lag
-		// while this is naieve and whole file, in append or WAL this might be better
 		WriteToDisk();
 	}
 
@@ -229,12 +244,32 @@ public class DataStore
 	{
 		if (!Settings.AnnounceKills) return;
 
-		var victimName = victimUser.FormattedName;
-		var killerName = killerUser.FormattedName;
+		string victimClan = victimUser.LastClanName != "No clan found" ? victimUser.LastClanName : "";
+		string killerClan = killerUser.LastClanName != "No clan found" ? killerUser.LastClanName : "";
+
+		string victimLevelColor = "green";
+		string killerLevelColor = "green";
+
+		int levelDifference = killerUser.MaxLevel - victimUser.MaxLevel;
+		if (levelDifference >= Settings.LevelColorThreshold1 && levelDifference <= Settings.LevelColorThreshold2)
+		{
+			victimLevelColor = "yellow";
+			killerLevelColor = "yellow";
+		}
+		else if (levelDifference > Settings.LevelColorThreshold2)
+		{
+			victimLevelColor = "red";
+			killerLevelColor = "red";
+		}
+
+		var victimName = AnsiColor.ColorText(victimClan, "reset") + AnsiColor.ColorText(victimUser.LastName, "white") + $"[" + AnsiColor.ColorText($"{victimUser.MaxLevel}", victimLevelColor) + "]";
+		var killerName = AnsiColor.ColorText(killerClan, "reset") + AnsiColor.ColorText(killerUser.LastName, "white") + $"[" + AnsiColor.ColorText($"{killerUser.MaxLevel}", killerLevelColor) + "]";
+
+		string killedText = AnsiColor.ColorText("killed", killerLevelColor);
 
 		var message = lostStreakAmount > Settings.AnnounceKillstreakLostMinimum
 			? $"{killerName} ended {victimName}'s {Markup.Secondary(lostStreakAmount)} kill streak!"
-			: $"{killerName} killed {victimName}!";
+			: $"{killerName} {killedText} {victimName}!";
 
 		var killMsg = killerUser.CurrentStreak switch
 		{
@@ -255,6 +290,50 @@ public class DataStore
 		}
 	}
 
+	private static void UpdateTopKillersBuff()
+	{
+		var topKillers = PlayerDatas.Values.OrderByDescending(k => k.Kills).Take(10).ToList();
+		var top3Killers = topKillers.Take(3).ToList();
+
+		var buffPrefabs = new List<PrefabGUID>
+		{
+			new PrefabGUID(1533067119), // Buff for 1st place
+            new PrefabGUID(-1864993435), // Buff for 2nd place
+            new PrefabGUID(1670636401)   // Buff for 3rd place
+        };
+
+		foreach (var player in PlayerDatas.Values)
+		{
+			var userEntity = player.UserEntity;
+			var charEntity = player.CharEntity;
+
+			for (int i = 0; i < buffPrefabs.Count; i++)
+			{
+				var buffPrefab = buffPrefabs[i];
+				if (i < top3Killers.Count && top3Killers[i] == player)
+				{
+					if (!BuffUtility.HasBuff(VWorld.Server.EntityManager, charEntity, buffPrefab))
+					{
+						Buffs.AddBuff(userEntity, charEntity, buffPrefab, 30);
+					}
+				}
+				else
+				{
+					if (BuffUtility.HasBuff(VWorld.Server.EntityManager, charEntity, buffPrefab))
+					{
+						Buffs.RemoveBuff(charEntity, buffPrefab);
+					}
+				}
+			}
+		}
+	}
+
+	private static void ApplyDebuffForUnfairKill(Entity killerUser, Entity killerEntity)
+	{
+		var debuffPrefab = new PrefabGUID(1163490655); 
+		Buffs.AddBuff(killerUser, killerEntity, debuffPrefab, 30);
+	}
+
 	private static int RecordDeath(ulong platformId)
 	{
 		var lostStreak = 0;
@@ -269,7 +348,7 @@ public class DataStore
 		}
 		else
 		{
-			PlayerDatas[platformId] = new PlayerStatistics() { Deaths = 1, SteamId = platformId };
+			PlayerDatas[platformId] = new PlayerStatistics(platformId, "", 0, 1, 0, 0, "", 0, 0, Entity.Null, Entity.Null);
 		}
 
 		return lostStreak;
@@ -286,7 +365,7 @@ public class DataStore
 		}
 		else
 		{
-			PlayerDatas[steamId] = new PlayerStatistics() { Kills = 1, CurrentStreak = 1, HighestStreak = 1, SteamId = steamId };
+			PlayerDatas[steamId] = new PlayerStatistics(steamId, "", 1, 0, 1, 1, "", 0, 0, Entity.Null, Entity.Null);
 		}
 	}
 }

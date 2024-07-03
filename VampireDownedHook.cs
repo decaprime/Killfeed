@@ -1,6 +1,7 @@
 using System;
 using Bloodstone.API;
 using HarmonyLib;
+using Killfeed.Utils;
 using ProjectM;
 using Unity.Collections;
 using Unity.Entities;
@@ -22,7 +23,6 @@ public static class VampireDownedHook
 
 	private static void ProcessVampireDowned(Entity entity)
 	{
-
 		if (!VampireDownedServerEventSystem.TryFindRootOwner(entity, 1, VWorld.Server.EntityManager, out var victimEntity))
 		{
 			Plugin.Logger.LogMessage("Couldn't get victim entity");
@@ -31,10 +31,9 @@ public static class VampireDownedHook
 
 		var downBuff = entity.Read<VampireDownedBuff>();
 
-
 		if (!VampireDownedServerEventSystem.TryFindRootOwner(downBuff.Source, 1, VWorld.Server.EntityManager, out var killerEntity))
 		{
-			Plugin.Logger.LogMessage("Couldn't get victim entity");
+			Plugin.Logger.LogMessage("Couldn't get killer entity");
 			return;
 		}
 
@@ -65,11 +64,11 @@ public static class VampireDownedHook
 			return;
 		}
 
-		var location = victimEntity.Read<LocalToWorld>();
+		var location = victimEntity.Read<LocalToWorld>().Position;
 
 		int victimLevel = victimEntity.Has<Equipment>(out var victimEquipment) ? (int)Math.Round(victimEquipment.GetFullLevel()) : -1;
 		int killerLevel = killerEntity.Has<Equipment>(out var killerEquipment) ? (int)Math.Round(killerEquipment.GetFullLevel()) : -1;
 
-		DataStore.RegisterKillEvent(victim, killer, location.Position, victimLevel, killerLevel);
+		DataStore.RegisterKillEvent(victim, victimEntity, killer, killerEntity, location, victimLevel, killerLevel);
 	}
 }
