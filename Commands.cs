@@ -9,7 +9,7 @@ namespace Killfeed;
 
 public class Commands
 {
-	[Command("killfeed leaderboard", shortHand: "kf top")]
+	[Command("leaderboard", shortHand: "kf top")]
 	public void TopCommand(ChatCommandContext ctx)
 	{
 		// TODO: Enhance with cache and such
