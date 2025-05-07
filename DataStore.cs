@@ -247,11 +247,13 @@ public class DataStore
 			_ => null
 		};
 
-		ServerChatUtils.SendSystemMessageToAllClients(VWorld.Server.EntityManager, Markup.Prefix + message);
+		FixedString512Bytes systemLostStreakMessage = Markup.Prefix + message;
+		ServerChatUtils.SendSystemMessageToAllClients(VWorld.Server.EntityManager, ref systemLostStreakMessage);
 
 		if (!string.IsNullOrEmpty(killMsg) && Settings.AnnounceKillstreak)
 		{
-			ServerChatUtils.SendSystemMessageToAllClients(VWorld.Server.EntityManager, Markup.Prefix + killMsg);
+			FixedString512Bytes systemKillMessage = Markup.Prefix + killMsg;
+			ServerChatUtils.SendSystemMessageToAllClients(VWorld.Server.EntityManager, ref systemKillMessage);
 		}
 	}
 
