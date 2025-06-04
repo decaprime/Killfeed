@@ -1,6 +1,5 @@
 
 using System;
-using Bloodstone.API;
 using Il2CppInterop.Runtime;
 using Unity.Entities;
 
@@ -12,18 +11,11 @@ using Unity.Entities;
 #pragma warning disable CS8500
 internal static class ECSExtensions
 {
-	internal static void With<T>(this Entity entity, VExtensions.ActionRef<T> action) where T : struct
-	{
-		T item = entity.RW<T>();
-		action(ref item);
-		VWorld.Game.EntityManager.SetComponentData(entity, item);
-	}
-
 	internal static bool Has<T>(this Entity entity) where T : struct
 	{
 		int typeIndex = TypeManager.GetTypeIndex(Il2CppType.Of<T>());
 
-		return VWorld.Game.EntityManager.HasComponentRaw(entity, typeIndex);
+		return VWorld.Server.EntityManager.HasComponentRaw(entity, typeIndex);
 	}
 
 	internal static bool Has<T>(this Entity entity, out T value) where T : struct
@@ -41,7 +33,7 @@ internal static class ECSExtensions
 	internal unsafe static T RW<T>(this Entity entity) where T : struct
 	{
 		int typeIndex = TypeManager.GetTypeIndex(Il2CppType.Of<T>());
-		T* componentDataRawRW = (T*)VWorld.Game.EntityManager.GetComponentDataRawRW(entity, typeIndex);
+		T* componentDataRawRW = (T*)VWorld.Server.EntityManager.GetComponentDataRawRW(entity, typeIndex);
 		if (componentDataRawRW == null)
 		{
 			throw new InvalidOperationException($"Failure to access ReadWrite <{typeof(T).Name}> typeIndex({typeIndex}) on entity({entity}).");
@@ -52,7 +44,7 @@ internal static class ECSExtensions
 	internal unsafe static T Read<T>(this Entity entity) where T : struct
 	{
 		int typeIndex = TypeManager.GetTypeIndex(Il2CppType.Of<T>());
-		T* componentDataRawRO = (T*)VWorld.Game.EntityManager.GetComponentDataRawRO(entity, typeIndex);
+		T* componentDataRawRO = (T*)VWorld.Server.EntityManager.GetComponentDataRawRO(entity, typeIndex);
 		if (componentDataRawRO == null)
 		{
 			throw new InvalidOperationException($"Failure to access ReadOnly <{typeof(T).Name}> typeIndex({typeIndex}) on entity({entity}).");
