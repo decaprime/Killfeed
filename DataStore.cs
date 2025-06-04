@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using Backtrace.Unity.Common;
-using Bloodstone.API;
 using Il2CppSystem.Linq;
 using ProjectM;
 using ProjectM.Network;
@@ -247,11 +246,13 @@ public class DataStore
 			_ => null
 		};
 
-		ServerChatUtils.SendSystemMessageToAllClients(VWorld.Server.EntityManager, Markup.Prefix + message);
+		var announceMessage = new FixedString512Bytes(Markup.Prefix + message);
+		ServerChatUtils.SendSystemMessageToAllClients(VWorld.Server.EntityManager, ref announceMessage);
 
 		if (!string.IsNullOrEmpty(killMsg) && Settings.AnnounceKillstreak)
 		{
-			ServerChatUtils.SendSystemMessageToAllClients(VWorld.Server.EntityManager, Markup.Prefix + killMsg);
+			var killMessage = new FixedString512Bytes(Markup.Prefix + killMsg);
+			ServerChatUtils.SendSystemMessageToAllClients(VWorld.Server.EntityManager, ref killMessage);
 		}
 	}
 
