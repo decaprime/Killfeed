@@ -10,8 +10,6 @@ namespace Killfeed;
 
 [BepInPlugin(MyPluginInfo.PLUGIN_GUID, MyPluginInfo.PLUGIN_NAME, MyPluginInfo.PLUGIN_VERSION)]
 [BepInDependency("gg.deca.VampireCommandFramework")]
-[BepInDependency("gg.deca.Bloodstone")]
-[Bloodstone.API.Reloadable]
 public partial class Plugin : BasePlugin
 {
 	Harmony _harmony;
